@@ -114,8 +114,19 @@ pub fn chat(win: &Window, name: &mut std::string::String) -> bool {
             match input {
                 Input::Character('\n') if string.len() > 1 => {
                     stream
-                        .write(chattest::Code::MessageTo(string.clone()))
-                        .unwrap();
+                    .write(chattest::Code::MessageTo(string.clone()))
+                    .unwrap();
+                    messages.push(format!("  {}", string));
+                    if messages.len() == 1 {
+                        win.mvprintw(2, 0, messages.last().unwrap());
+                        win.clrtobot();
+                        win.mvprintw(LAST, 0, " > ");
+                    } else if messages.len() == selected + 2 {
+                        selected += 1;
+                        win.mvprintw(2, 0, messages.last().unwrap());
+                        win.clrtobot();
+                        win.mvprintw(LAST, 0, " > ");
+                    }
                     string.clear();
                     cursor = 0;
                     win.mv(LAST, 3);

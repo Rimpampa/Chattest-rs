@@ -315,21 +315,21 @@ impl NonBlockingStream {
                         self.buffer[7],
                         self.buffer[8],
                     ]) as usize;
-                    // Reset the values
-                    self.bytes = 0;
-                    self.buffer = vec![0];
                     // Convert the bytes into a String and separate the name
                     // from the text
                     let name = String::from_iter(
                         self.buffer
-                            .iter()
-                            .skip(9)
-                            .map(|b| *b as char)
-                            .take(name_len),
+                        .iter()
+                        .skip(9)
+                        .map(|b| *b as char)
+                        .take(name_len),
                     );
                     let text = String::from_iter(
                         self.buffer.iter().skip(9 + name_len).map(|b| *b as char),
                     );
+                    // Reset the values
+                    self.bytes = 0;
+                    self.buffer = vec![0];
                     // Return the name and text
                     return Ok(Some(Code::MessageFrom(name, text)));
                 }
