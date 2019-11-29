@@ -22,7 +22,8 @@
 
       Clients send this type of message right after connecting to the server,
       putting their name inside. Server then responds with a code 2 message or
-      another code 1 message where it tells to the client the name of the room.
+      another code 5 message where it tells to the client the name of the room
+      and the name of the admin.
 
  - ALREADY_HERE (code 2)
       only the code is sent. It is used to tell to the client who is
@@ -49,6 +50,12 @@
       It is used by the server to distribute messages to the connected clients.
       `name_length` is the length of the name, name is the name of the client
       who sent the message and text is the message itself
+
+ - WELCOME (code 5)
+      This message is similar to MESSAGE_FROM but the name field is the name of
+      the room which the client is connected to and text is the name of the
+      admin of that room. This type of message is sent right after a client
+      connects to a server
 */
 
 use std::io::{self, ErrorKind, Read, Write};
@@ -82,17 +89,15 @@ pub enum Code {
     MessageTo(String),
     /// MessageFrom(name, text)
     MessageFrom(String, String),
+    /// Welcome(room, admin)
+    Welcome(String, String),
 }
 
 const NAME: u8 = 1;
 const ALREADY_HERE: u8 = 2;
 const MESSAGE_TO: u8 = 3;
 const MESSAGE_FROM: u8 = 4;
-
-pub enum Error {
-    WouldBlock,
-    ConnectionLost,
-}
+const WELCOME: u8 = 5;
 
 /// A wrapper around the `TcpStream` that uses the Chattest protocol
 pub struct BlockingStream {
@@ -101,7 +106,7 @@ pub struct BlockingStream {
 
 impl BlockingStream {
     pub fn new(stream: TcpStream) -> Self {
-        stream.set_nonblocking(false);
+        stream.set_nonblocking(false).unwrap();
         BlockingStream { stream }
     }
 
@@ -164,10 +169,30 @@ impl BlockingStream {
                     // Get the length of the message
                     let name_len = self.read_uint()? as usize;
                     // The size of the name can't exceed the one of the entire message
-                    if name_len > length {
+                    if name_len < length {
                         return Ok(Code::MessageFrom(
-                            self.read_chars(name_len)?,          // Name
-                            self.read_chars(length - name_len)?, // Message
+                            self.read_chars(name_len)?,              // Name
+                            self.read_chars(length - name_len - 4)?, // Message
+                        ));
+                    }
+                }
+                Err(io::Error::new(
+                    ErrorKind::InvalidInput,
+                    "Chattest stream error: Length recived is not correct!",
+                ))
+            }
+            WELCOME => {
+                // Get the length of the message
+                let length = self.read_uint()? as usize;
+                // Length must be at least 4 (size of the length of the name)
+                if length >= 4 {
+                    // Get the length of the message
+                    let room_len = self.read_uint()? as usize;
+                    // The size of the name can't exceed the one of the entire message
+                    if room_len < length {
+                        return Ok(Code::Welcome(
+                            self.read_chars(room_len)?,              // Room
+                            self.read_chars(length - room_len - 4)?, // Admin
                         ));
                     }
                 }
@@ -188,25 +213,32 @@ impl BlockingStream {
     pub fn write(&mut self, message: Code) -> io::Result<()> {
         match message {
             Code::Name(name) => {
-                self.write_byte(1)?;
+                self.write_byte(NAME)?;
                 self.write_uint(name.len() as u32)?;
                 self.write_chars(name)?;
             }
             Code::AlreadyHere => {
-                self.write_byte(2)?;
+                self.write_byte(ALREADY_HERE)?;
                 self.write_uint(0)?;
             }
             Code::MessageTo(message) => {
-                self.write_byte(3)?;
+                self.write_byte(MESSAGE_TO)?;
                 self.write_uint(message.len() as u32)?;
                 self.write_chars(message)?;
             }
             Code::MessageFrom(name, message) => {
-                self.write_byte(4)?;
+                self.write_byte(MESSAGE_FROM)?;
                 self.write_uint((name.len() + message.len()) as u32 + 4)?;
                 self.write_uint(name.len() as u32)?;
                 self.write_chars(name)?;
                 self.write_chars(message)?;
+            }
+            Code::Welcome(room, admin) => {
+                self.write_byte(WELCOME)?;
+                self.write_uint((room.len() + admin.len()) as u32 + 4)?;
+                self.write_uint(room.len() as u32)?;
+                self.write_chars(room)?;
+                self.write_chars(admin)?;
             }
         }
         self.stream.flush()?;
@@ -229,7 +261,7 @@ pub struct NonBlockingStream {
 
 impl NonBlockingStream {
     pub fn new(stream: TcpStream) -> Self {
-        stream.set_nonblocking(true);
+        stream.set_nonblocking(true).unwrap();
         NonBlockingStream {
             stream,
             buffer: vec![0],
@@ -272,7 +304,17 @@ impl NonBlockingStream {
                     // message
                     self.buffer.extend(iter::repeat(0).take(4));
                 }
-                code @ _ => println!("Warning: recived {}!", code),
+                WELCOME => {
+                    // Extend the buffer enough to store the length of the
+                    // message
+                    self.buffer.extend(iter::repeat(0).take(4));
+                }
+                code => {
+                    // Reset the values
+                    self.bytes = 0;
+                    self.buffer[0] = 0;
+                    println!("Warning: recived {}!", code);
+                }
             }
         // After another four bytes the length can be calculated
         } else if self.bytes == 5 {
@@ -319,10 +361,10 @@ impl NonBlockingStream {
                     // from the text
                     let name = String::from_iter(
                         self.buffer
-                        .iter()
-                        .skip(9)
-                        .map(|b| *b as char)
-                        .take(name_len),
+                            .iter()
+                            .skip(9)
+                            .map(|b| *b as char)
+                            .take(name_len),
                     );
                     let text = String::from_iter(
                         self.buffer.iter().skip(9 + name_len).map(|b| *b as char),
@@ -333,7 +375,33 @@ impl NonBlockingStream {
                     // Return the name and text
                     return Ok(Some(Code::MessageFrom(name, text)));
                 }
-                code @ _ => println!("Chattest stream error: code {} not supported!", code),
+                WELCOME => {
+                    // Calculate the length of the name
+                    let room_len = bytes_to_uint([
+                        self.buffer[5],
+                        self.buffer[6],
+                        self.buffer[7],
+                        self.buffer[8],
+                    ]) as usize;
+                    // Convert the bytes into a String and separate the room's
+                    // name from the admin's one
+                    let room = String::from_iter(
+                        self.buffer
+                            .iter()
+                            .skip(9)
+                            .map(|b| *b as char)
+                            .take(room_len),
+                    );
+                    let admin = String::from_iter(
+                        self.buffer.iter().skip(9 + room_len).map(|b| *b as char),
+                    );
+                    // Reset the values
+                    self.bytes = 0;
+                    self.buffer = vec![0];
+                    // Return the room and admin names
+                    return Ok(Some(Code::Welcome(room, admin)));
+                }
+                code => println!("Chattest stream error: code {} not supported!", code),
             }
         }
         Ok(None)
@@ -377,6 +445,13 @@ impl NonBlockingStream {
                 self.write_uint(name.len() as u32)?;
                 self.write_chars(name)?;
                 self.write_chars(message)?;
+            }
+            Code::Welcome(room, admin) => {
+                self.write_byte(MESSAGE_FROM)?;
+                self.write_uint((room.len() + admin.len()) as u32 + 4)?;
+                self.write_uint(room.len() as u32)?;
+                self.write_chars(room)?;
+                self.write_chars(admin)?;
             }
         }
         self.stream.flush()?;

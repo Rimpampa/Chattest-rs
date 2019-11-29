@@ -9,7 +9,7 @@ mod chattest;
 mod client;
 mod server;
 
-const TITLE: &'static str = "    ___ _           _   _            _   
+const TITLE: &str = "    ___ _           _   _            _   
    / __\\ |__   __ _| |_| |_ ___  ___| |_ 
   / /  | '_ \\ / _` | __| __/ _ \\/ __| __|
  / /___| | | | (_| | |_| ||  __/\\__ \\ |_ 
@@ -40,11 +40,11 @@ fn main() {
         // .subwin(1, 30, window.get_cur_y(), window.get_cur_x()).unwrap()
         match get_string(&window) {
             (n, false) => name = n,
-            (_, true) => return (),
+            (_, true) => return,
         }
         window.mv(0, 0);
         window.clrtobot();
-        name.len() == 0
+        name.is_empty()
     } {}
 
     window.printw(format!(

@@ -51,14 +51,17 @@ pub fn chat(win: &Window, name: &mut std::string::String) -> bool {
         win.mv(0, 0);
         win.clrtobot();
     }
-    match result {
-        chattest::Code::Name(name) => {
+    let admin = match result {
+        chattest::Code::Welcome(room, admin) => {
             win.printw("  Connected to room ");
-            win.printw(name);
+            win.printw(room);
+            win.printw("\n The admin is ");
+            win.printw(&admin);
             win.refresh();
+            admin
         }
         _ => panic!("Server didn't respond correctly"),
-    }
+    };
     let mut stream = stream.non_blocking();
     win.nodelay(true);
 
@@ -78,20 +81,24 @@ pub fn chat(win: &Window, name: &mut std::string::String) -> bool {
                         messages.push(format!("  {}> {}", name, message));
                     }
                     chattest::Code::MessageTo(message) => {
-                        println!("[admin]> {}", message);
-                        messages.push(format!("  [admin]> {}", message));
+                        println!("{}# {}", admin, message);
+                        messages.push(format!("  {}# {}", admin, message));
                     }
                     _ => println!("Strange code: {:?}", code),
                 }
                 if messages.len() == 1 {
-                    win.mvprintw(2, 0, messages.last().unwrap());
+                    win.mvprintw(3, 0, messages.last().unwrap());
                     win.clrtobot();
                     win.mvprintw(LAST, 0, " > ");
+                    win.printw(&string);
+                    win.mv(LAST, 3 + cursor as i32);
                 } else if messages.len() == selected + 2 {
                     selected += 1;
-                    win.mvprintw(2, 0, messages.last().unwrap());
+                    win.mvprintw(3, 0, messages.last().unwrap());
                     win.clrtobot();
                     win.mvprintw(LAST, 0, " > ");
+                    win.printw(&string);
+                    win.mv(LAST, 3 + cursor as i32);
                 }
             }
             Ok(None) => (),
@@ -114,18 +121,22 @@ pub fn chat(win: &Window, name: &mut std::string::String) -> bool {
             match input {
                 Input::Character('\n') if string.len() > 1 => {
                     stream
-                    .write(chattest::Code::MessageTo(string.clone()))
-                    .unwrap();
+                        .write(chattest::Code::MessageTo(string.clone()))
+                        .unwrap();
                     messages.push(format!("  {}", string));
                     if messages.len() == 1 {
-                        win.mvprintw(2, 0, messages.last().unwrap());
+                        win.mvprintw(3, 0, messages.last().unwrap());
                         win.clrtobot();
                         win.mvprintw(LAST, 0, " > ");
+                        win.printw(&string);
+                        win.mv(LAST, 3 + cursor as i32);
                     } else if messages.len() == selected + 2 {
                         selected += 1;
-                        win.mvprintw(2, 0, messages.last().unwrap());
+                        win.mvprintw(3, 0, messages.last().unwrap());
                         win.clrtobot();
                         win.mvprintw(LAST, 0, " > ");
+                        win.printw(&string);
+                        win.mv(LAST, 3 + cursor as i32);
                     }
                     string.clear();
                     cursor = 0;
@@ -134,15 +145,19 @@ pub fn chat(win: &Window, name: &mut std::string::String) -> bool {
                 }
                 Input::KeyUp if selected > 0 => {
                     selected -= 1;
-                    win.mvprintw(2, 0, &messages[selected]);
+                    win.mvprintw(3, 0, &messages[selected]);
                     win.clrtobot();
                     win.mvprintw(LAST, 0, " > ");
+                    win.printw(&string);
+                    win.mv(LAST, 3 + cursor as i32);
                 }
                 Input::KeyDown if selected + 1 < messages.len() => {
                     selected += 1;
-                    win.mvprintw(2, 0, &messages[selected]);
+                    win.mvprintw(3, 0, &messages[selected]);
                     win.clrtobot();
                     win.mvprintw(LAST, 0, " > ");
+                    win.printw(&string);
+                    win.mv(LAST, 3 + cursor as i32);
                 }
                 _ => (),
             }

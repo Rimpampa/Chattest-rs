@@ -2,7 +2,7 @@ use crate::*;
 use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::sync::{Arc, RwLock};
-use std::thread::{self, JoinHandle};
+use std::thread;
 
 pub fn chat(win: &Window, name: String) -> bool {
     // Get the name of the room from the user
@@ -53,6 +53,8 @@ pub fn chat(win: &Window, name: String) -> bool {
                 win.mvprintw(3, 0, format!("{}", rmsgs[index]));
                 win.clrtobot();
                 win.mvprintw(LAST, 0, " > ");
+                win.printw(&string);
+                win.mv(LAST, 3 + cursor as i32);
             }
             last = rmsgs.len();
             println!(
@@ -89,16 +91,20 @@ pub fn chat(win: &Window, name: String) -> bool {
                 Input::KeyUp if index > 0 => {
                     println!("UP!");
                     index -= 1;
-                    win.mvprintw(3, 0, format!("{}", rmsgs[index]));
+                    win.mvprintw(3, 0, &rmsgs[index]);
                     win.clrtobot();
                     win.mvprintw(LAST, 0, " > ");
+                    win.printw(&string);
+                    win.mv(LAST, 3 + cursor as i32);
                 }
                 Input::KeyDown if index + 1 < last => {
                     println!("DOWN!");
                     index += 1;
-                    win.mvprintw(3, 0, format!("{}", rmsgs[index]));
+                    win.mvprintw(3, 0, &rmsgs[index]);
                     win.clrtobot();
                     win.mvprintw(LAST, 0, " > ");
+                    win.printw(&string);
+                    win.mv(LAST, 3 + cursor as i32);
                 }
                 _ => (),
             }
@@ -107,7 +113,7 @@ pub fn chat(win: &Window, name: String) -> bool {
     }
 }
 
-fn find_string(vec: &Vec<(chattest::NonBlockingStream, String)>, val: &String) -> bool {
+fn find_string(vec: &[(chattest::NonBlockingStream, String)], val: &str) -> bool {
     for (_, string) in vec.iter() {
         if string == val {
             return true;
@@ -147,7 +153,12 @@ fn accept_thread(
                                     && !find_string(&clients.read().unwrap(), &name)
                                 {
                                     // Tell the client the name of the room
-                                    stream.write(chattest::Code::Name((*room).clone())).unwrap();
+                                    stream
+                                        .write(chattest::Code::Welcome(
+                                            (*room).clone(),
+                                            (*arc_name).clone(),
+                                        ))
+                                        .unwrap();
                                     println!("Connected: {}({})", name, addr);
                                     // Comunicate the new connection:
                                     messages
