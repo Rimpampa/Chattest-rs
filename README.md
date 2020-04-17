@@ -10,3 +10,7 @@ What can you do:
 # TODO
 
 The plan is to create a sort of wrapper around the `pan-curses` crate in order to be able to interact with the window more easily. Util then the program will stay in pre-release (v0.x.x)
+
+# Warning
+
+It currently has a problem which blocks the user interface of the user hosting the room when he sends a message.
